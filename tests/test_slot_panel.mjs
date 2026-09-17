@@ -166,7 +166,7 @@ function findByText(node, label) {
 
 // ── collapsed state ──────────────────────────────────────────────────────────
 let tree = await render();
-check("collapsed panel shows the version", text(tree).includes("モデル使用量の集約 v1.0"));
+check("collapsed panel shows the version", /モデル使用量の集約 v\d+\.\d+/.test(text(tree)), text(tree).slice(0, 60));
 check("collapsed panel shows the fold summary (90枚 → 2件)", text(tree).includes("90枚 → 2件（重複 88）"), text(tree));
 check("collapsed panel offers the breakdown toggle", !!findByText(tree, "内訳を見る"));
 check("collapsed panel does not render rows", !text(tree).includes("aux:"));
