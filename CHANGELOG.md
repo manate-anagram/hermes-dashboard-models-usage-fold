@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-17
+
+- パネルの表示位置を「MODEL SETTINGS カードの直下・モデルカード群の直前」に移動
+  - Models ページのスロットは `models:top` / `models:bottom` の2つだけなので、
+    いったん top にマウントしてから DOM 上で relocation する方式
+  - アンカーは "Model Settings" ヘッダ（見つからなければ `#1` のランク span から cards grid を特定）
+  - MutationObserver（200ms デバウンス）＋リトライタイマーで再配置。二重マウント時は古いノードを除去
+- パネルの profile 指定を公式ページと同じ挙動に（`?profile=` があるときだけ送る）
+- wrapper に fold 件数のログを追加（`folded 90 -> 36 rows`）
+
 ## [1.0.0] - 2026-09-17
 
 初版。

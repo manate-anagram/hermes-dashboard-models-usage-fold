@@ -70,7 +70,7 @@ const FIXTURE = {
   ],
 };
 
-const calls = { fetch: [], slots: [], reload: 0 };
+const calls = { fetch: [], slots: [], reload: 0, inserts: [] };
 let fetchImpl = async () => JSON.parse(JSON.stringify(FIXTURE));
 
 const SDK = {
@@ -217,6 +217,104 @@ fetchImpl = async () => { throw new Error("HTTP 500"); };
 findByText(tree, "90d").props.onClick();
 tree = await render();
 check("fetch failure surfaces in the panel", text(tree).includes("取得失敗: HTTP 500"), text(tree).slice(0, 200));
+
+// ── placement: below "Model Settings", directly above the cards grid ─────────
+// The Models page only has models:top / models:bottom, so the panel is mounted at
+// the top and then moved. Exercise the mover against a fake copy of the page DOM.
+function makeEl(tag, className) {
+  const el = {
+    tagName: tag,
+    className: className || "",
+    childNodes: [],
+    textContent: "",
+    parentElement: null,
+    isConnected: true,
+    get childElementCount() { return this.childNodes.length; },
+    setAttribute() {},
+    appendChild(child) {
+      if (child.parentElement && child.parentElement !== this) child.parentElement.removeChild(child);
+      child.parentElement = this;
+      this.childNodes.push(child);
+      return child;
+    },
+    insertBefore(child, ref) {
+      if (child.parentElement && child.parentElement !== this) child.parentElement.removeChild(child);
+      child.parentElement = this;
+      const i = this.childNodes.indexOf(ref);
+      if (i < 0) this.childNodes.push(child); else this.childNodes.splice(i, 0, child);
+      calls.inserts.push(child === panelEl ? "panel" : "other");
+      return child;
+    },
+    removeChild(child) {
+      const i = this.childNodes.indexOf(child);
+      if (i >= 0) this.childNodes.splice(i, 1);
+      child.parentElement = null;
+      return child;
+    },
+    querySelectorAll(sel) {
+      const out = [];
+      const walk = (n) => n.childNodes.forEach((c) => {
+        const hit = sel === "*" || (sel === "span" && c.tagName === "span") || (sel === "div" && c.tagName === "div");
+        if (hit) out.push(c);
+        walk(c);
+      });
+      walk(this);
+      return out;
+    },
+    get nextSibling() {
+      if (!this.parentElement) return null;
+      const i = this.parentElement.childNodes.indexOf(this);
+      return i < 0 ? null : this.parentElement.childNodes[i + 1] || null;
+    },
+    get previousSibling() {
+      if (!this.parentElement) return null;
+      const i = this.parentElement.childNodes.indexOf(this);
+      return i <= 0 ? null : this.parentElement.childNodes[i - 1] || null;
+    },
+  };
+  return el;
+}
+
+const container = makeEl("div", "space-y-4 max-w-none");
+const settingsCard = makeEl("div", "min-w-0 max-w-full overflow-hidden bg-card border border-border");
+const settingsHeaderWrap = makeEl("div", "flex items-center gap-2");
+const settingsHeader = makeEl("span", "text-display text-xs");
+settingsHeader.textContent = "Model Settings";
+settingsCard.appendChild(settingsHeaderWrap);
+settingsHeaderWrap.appendChild(settingsHeader);
+const cardsGrid = makeEl("div", "grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3");
+const firstCard = makeEl("div", "bg-card");
+const rankSpan = makeEl("span", "text-xs font-mono");
+rankSpan.textContent = "#1";
+firstCard.appendChild(rankSpan);
+cardsGrid.appendChild(firstCard);
+container.appendChild(makeEl("div", "flex items-center justify-between"));
+container.appendChild(settingsCard);
+container.appendChild(cardsGrid);
+
+const slotHost = makeEl("div", "muf-slot-host");
+const panelEl = makeEl("div", "muf-wrap");
+slotHost.appendChild(panelEl);
+
+globalThis.document.querySelectorAll = (sel) => (sel === "[data-muf-panel]" ? [panelEl] : container.querySelectorAll(sel));
+globalThis.document.body = container;
+
+check("placement anchor resolves to the Model Settings card", Panel.__mufFindCard() === settingsCard,
+  String(Panel.__mufFindCard() === settingsCard));
+check("cards grid is found via the #1 rank span", Panel.__mufFindGrid() === cardsGrid,
+  String(Panel.__mufFindGrid() === cardsGrid));
+check("panel is moved out of the slot host", Panel.__mufPlacePanel() === true);
+check("panel sits directly under Model Settings / above the cards",
+  container.childNodes.indexOf(panelEl) === container.childNodes.indexOf(cardsGrid) - 1,
+  "index " + container.childNodes.indexOf(panelEl) + " of cards " + container.childNodes.indexOf(cardsGrid));
+check("panel is no longer inside the slot host", slotHost.childNodes.indexOf(panelEl) === -1);
+check("placing twice is a no-op", Panel.__mufPlacePanel() === true && calls.inserts.length === 1,
+  "inserts=" + JSON.stringify(calls.inserts));
+
+// fallback: no "Model Settings" text (localised UI) → still lands above the cards
+settingsHeader.textContent = "モデル設定アルファ";
+check("falls back to the cards grid when the anchor text is unknown",
+  Panel.__mufPlacePanel() === true && container.childNodes.indexOf(panelEl) === container.childNodes.indexOf(cardsGrid) - 1);
 
 cleanups.forEach((fn) => { try { fn(); } catch { /* ignore */ } });
 

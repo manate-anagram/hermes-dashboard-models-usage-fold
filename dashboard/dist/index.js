@@ -18,7 +18,7 @@
 
   var PLUGIN = "models-usage-fold";
   var SLOT = "models:top";
-  var VERSION = "v1.0";
+  var VERSION = "v1.1";
   var BASE = "/api/plugins/" + PLUGIN;
   var TOP_N = 15;
 
@@ -45,6 +45,95 @@
       ".muf-note{font-size:11px;opacity:.6;margin-top:6px}",
     ].join("");
     document.head.appendChild(style);
+  }
+
+  // ── placement ────────────────────────────────────────────────────────────
+  // The Models page only exposes `models:top` / `models:bottom`, so the panel is
+  // first mounted at the top of the page and then relocated to sit right under the
+  // "Model Settings" card (i.e. directly above the model cards).
+  var PANEL_ATTR = "data-muf-panel";
+  var panelNode = null;
+  var panelHost = null;
+  var placeTimer = null;
+
+  function captureNode(el) {
+    panelNode = el;
+    if (el && !panelHost) panelHost = el.parentElement;
+  }
+
+  function rootProps() {
+    return { className: "muf-wrap", "data-muf-panel": "1", ref: captureNode };
+  }
+
+  function findModelSettingsCard() {
+    var nodes = document.querySelectorAll("*");
+    for (var i = 0; i < nodes.length; i += 1) {
+      var el = nodes[i];
+      if (el.childElementCount !== 0) continue;
+      var label = (el.textContent || "").trim();
+      if (label !== "Model Settings" && label !== "モデル設定") continue;
+      var card = el;
+      for (var k = 0; k < 8 && card && card.parentElement; k += 1) {
+        card = card.parentElement;
+        if (/(^|\s)bg-card(\s|$)/.test(card.className || "")) return card;
+      }
+      return el.parentElement;
+    }
+    return null;
+  }
+
+  function findCardsGrid() {
+    var grids = document.querySelectorAll("div");
+    for (var i = 0; i < grids.length; i += 1) {
+      var grid = grids[i];
+      var cls = grid.className || "";
+      if (cls.indexOf("grid-cols-2") === -1 && cls.indexOf("grid-cols-3") === -1) continue;
+      var spans = grid.querySelectorAll("span");
+      for (var j = 0; j < spans.length; j += 1) {
+        if (/^#\d+$/.test((spans[j].textContent || "").trim())) return grid;
+      }
+    }
+    return null;
+  }
+
+  function placePanel() {
+    try {
+      var mine = document.querySelectorAll("[" + PANEL_ATTR + "]");
+      var node = panelNode;
+      if (!node && mine && mine.length) node = mine[mine.length - 1];
+      if (!node) return false;
+
+      // React may drop a foreign node; re-attach it to its slot host first.
+      if (node.isConnected === false && panelHost && panelHost.isConnected !== false) {
+        panelHost.appendChild(node);
+      }
+      // Drop leftovers from an earlier mount (double panel).
+      for (var i = 0; i < (mine ? mine.length : 0); i += 1) {
+        if (mine[i] !== node && mine[i].parentElement) mine[i].parentElement.removeChild(mine[i]);
+      }
+
+      var before = null;
+      var card = findModelSettingsCard();
+      if (card && card.parentElement) before = card.nextSibling;
+      else {
+        var grid = findCardsGrid();
+        if (grid && grid.parentElement) before = grid;
+      }
+      if (!before || !before.parentElement) return false;
+      if (before === node || before.previousSibling === node) return true;
+      before.parentElement.insertBefore(node, before);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function schedulePlacement() {
+    if (placeTimer) return;
+    placeTimer = setTimeout(function () {
+      placeTimer = null;
+      placePanel();
+    }, 200);
   }
 
   function useHook(name) {
@@ -138,6 +227,27 @@
       return function () { cancelled = true; };
     }, [days]);
 
+    // Park the panel under the "Model Settings" card (above the model cards) and
+    // keep it there while the page re-renders.
+    useEffect(function () {
+      var alive = true;
+      var timers = [0, 300, 900, 2000, 4000].map(function (ms) {
+        return setTimeout(function () { if (alive) placePanel(); }, ms);
+      });
+      var observer = null;
+      try {
+        if (typeof MutationObserver === "function") {
+          observer = new MutationObserver(function () { if (alive) schedulePlacement(); });
+          observer.observe(document.body, { childList: true, subtree: true });
+        }
+      } catch (err) { /* no observer → the timers above still place it */ }
+      return function () {
+        alive = false;
+        timers.forEach(function (t) { clearTimeout(t); });
+        if (observer) observer.disconnect();
+      };
+    }, []);
+
     var data = view.data;
     var info = (data && data.fold_info) || {};
     var folded = info.folded_rows != null ? info.folded_rows : (data && data.models ? data.models.length : null);
@@ -173,7 +283,7 @@
       )
     );
 
-    if (!open) return h("div", { className: "muf-wrap" }, head);
+    if (!open) return h("div", rootProps(), head);
 
     var models = (data && data.models) || [];
     var rows = models.slice(0, TOP_N).map(function (entry, i) {
@@ -190,7 +300,7 @@
       );
     });
 
-    return h("div", { className: "muf-wrap" },
+    return h("div", rootProps(),
       head,
       h("div", { className: "muf-rows" }, rows),
       h("div", { className: "muf-note" },
@@ -200,6 +310,12 @@
       )
     );
   }
+
+  // Placement is DOM surgery on the official page, so it gets its own seam and is
+  // exercised directly (see tests/test_slot_panel.mjs).
+  Panel.__mufPlacePanel = placePanel;
+  Panel.__mufFindCard = findModelSettingsCard;
+  Panel.__mufFindGrid = findCardsGrid;
 
   window.__HERMES_PLUGINS__.registerSlot(PLUGIN, SLOT, Panel);
 })();
