@@ -267,6 +267,9 @@ function makeEl(tag, className) {
       const i = this.parentElement.childNodes.indexOf(this);
       return i < 0 ? null : this.parentElement.childNodes[i + 1] || null;
     },
+    get lastChild() {
+      return this.childNodes[this.childNodes.length - 1] || null;
+    },
     get previousSibling() {
       if (!this.parentElement) return null;
       const i = this.parentElement.childNodes.indexOf(this);
@@ -317,6 +320,18 @@ check("placing twice is a no-op", Panel.__mufPlacePanel() === true && calls.inse
 // fallback: no "Model Settings" text (localised UI) → still lands above the cards
 settingsHeader.textContent = "モデル設定アルファ";
 check("falls back to the cards grid when the anchor text is unknown",
+  Panel.__mufPlacePanel() === true && container.childNodes.indexOf(panelEl) === container.childNodes.indexOf(cardsGrid) - 1);
+
+// empty state: cards grid gone → right after the Model Settings card
+settingsHeader.textContent = "Model Settings";
+container.removeChild(cardsGrid);
+slotHost.appendChild(panelEl); // send it back to the slot so it has to be re-placed
+check("empty state places it right below the Model Settings card",
+  Panel.__mufPlacePanel() === true
+  && container.childNodes.indexOf(panelEl) === container.childNodes.indexOf(settingsCard) + 1,
+  "panel=" + container.childNodes.indexOf(panelEl) + " card=" + container.childNodes.indexOf(settingsCard));
+container.appendChild(cardsGrid);
+check("cards coming back moves it above the grid again",
   Panel.__mufPlacePanel() === true && container.childNodes.indexOf(panelEl) === container.childNodes.indexOf(cardsGrid) - 1);
 
 cleanups.forEach((fn) => { try { fn(); } catch { /* ignore */ } });

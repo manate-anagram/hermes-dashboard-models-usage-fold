@@ -2,7 +2,7 @@
   "name": "models-usage-fold",
   "label": "Usage Fold",
   "description": "Fold duplicate provider×model cards on the Models page (vendor-prefix variants + auxiliary-task rows) and show the per-task breakdown.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "icon": "BarChart3",
   "tab": {
     "path": "/models-usage-fold",

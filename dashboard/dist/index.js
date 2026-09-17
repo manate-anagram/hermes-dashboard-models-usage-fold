@@ -18,7 +18,7 @@
 
   var PLUGIN = "models-usage-fold";
   var SLOT = "models:top";
-  var VERSION = "v1.2";
+  var VERSION = "v1.3";
   var BASE = "/api/plugins/" + PLUGIN;
   var TOP_N = 15;
 
@@ -108,6 +108,17 @@
     return null;
   }
 
+  function findPlacement() {
+    // Primary: the cards grid, so the panel always lands directly above the cards —
+    // independent of the "Model Settings" wording and of the Card's class names.
+    var grid = findCardsGrid();
+    if (grid && grid.parentElement) return { parent: grid.parentElement, before: grid };
+    // Fallback (empty state / no cards yet): right after the Model Settings card.
+    var card = findModelSettingsCard();
+    if (card && card.parentElement) return { parent: card.parentElement, before: card.nextSibling || null };
+    return null;
+  }
+
   function placePanel() {
     try {
       var mine = document.querySelectorAll("[" + PANEL_ATTR + "]");
@@ -124,19 +135,17 @@
         if (mine[i] !== node && mine[i].parentElement) mine[i].parentElement.removeChild(mine[i]);
       }
 
-      var before = null;
-      var card = findModelSettingsCard();
-      if (card && card.parentElement) before = card.nextSibling;
-      else {
-        var grid = findCardsGrid();
-        if (grid && grid.parentElement) before = grid;
-      }
-      if (!before || !before.parentElement) return false;
-      if (before === node || before.previousSibling === node) {
+      var spot = findPlacement();
+      if (!spot || !spot.parent) return false;
+      var before = spot.before;
+      if (before === node
+        || (before === null && spot.parent.lastChild === node)
+        || (before !== null && before.previousSibling === node)) {
         revealPanel(node);
         return true;
       }
-      before.parentElement.insertBefore(node, before);
+      if (before) spot.parent.insertBefore(node, before);
+      else spot.parent.appendChild(node);
       revealPanel(node);
       return true;
     } catch (err) {
