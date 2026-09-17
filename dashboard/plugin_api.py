@@ -313,7 +313,16 @@ def install_wrap() -> str:
             aux_rows = load_aux_rows(days, profile)
         except Exception:  # pragma: no cover - defensive
             aux_rows = []
-        return fold_response(_fn(days, profile), aux_rows)
+        out = fold_response(_fn(days, profile), aux_rows)
+        try:
+            info = out.get("fold_info") or {}
+            _log.info(
+                "models-usage-fold: folded %s -> %s rows (profile=%s days=%s)",
+                info.get("raw_rows"), info.get("folded_rows"), profile or "-", days,
+            )
+        except Exception:  # pragma: no cover - logging must never break the endpoint
+            pass
+        return out
 
     _wrapper._models_usage_fold_wrapped = True  # type: ignore[attr-defined]
     _wrapper._models_usage_fold_original = func  # type: ignore[attr-defined]

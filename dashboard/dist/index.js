@@ -87,10 +87,22 @@
     });
   }
 
-  function activeProfile() {
+  function currentProfile() {
+    // Mirror the dashboard's own scoping (ProfileProvider → setManagementProfile →
+    // ?profile= on the URL). When the page sends no profile, the backend uses the
+    // dashboard process's own profile, so we must not force one either.
+    try {
+      var q = typeof location !== "undefined" ? location.search || "" : "";
+      var urlProfile = new URLSearchParams(q).get("profile");
+      if (urlProfile) return Promise.resolve(urlProfile);
+    } catch (err) { /* ignore */ }
     if (SDK.api && typeof SDK.api.getActiveProfile === "function") {
       return SDK.api.getActiveProfile()
-        .then(function (r) { return (r && (r.active || r.current)) || null; })
+        .then(function (r) {
+          var active = r && r.active;
+          var current = r && r.current;
+          return active && current && active !== current ? active : null;
+        })
         .catch(function () { return null; });
     }
     return Promise.resolve(null);
@@ -110,7 +122,7 @@
     useEffect(function () {
       var cancelled = false;
       setView(function (prev) { return { loading: true, data: prev.data, error: null }; });
-      activeProfile()
+      currentProfile()
         .then(function (profile) {
           var url = BASE + "/model-usage?days=" + days + (profile ? "&profile=" + encodeURIComponent(profile) : "");
           return getJSON(url);

@@ -84,16 +84,18 @@ const SDK = {
 };
 
 const listeners = [];
+const loc = { reload: () => { calls.reload += 1; }, search: "" };
 globalThis.window = {
   __HERMES_PLUGIN_SDK__: SDK,
   __HERMES_PLUGINS__: {
     registerSlot: (plugin, slot, comp) => calls.slots.push({ plugin, slot, comp }),
     register: () => {},
   },
-  location: { reload: () => { calls.reload += 1; } },
+  location: loc,
   addEventListener: (t, fn) => listeners.push([t, fn]),
   removeEventListener: () => {},
 };
+globalThis.location = loc;
 globalThis.document = {
   getElementById: () => null,
   createElement: () => ({ id: "", textContent: "", setAttribute() {} }),
@@ -169,8 +171,8 @@ check("collapsed panel shows the fold summary (90枚 → 2件)", text(tree).incl
 check("collapsed panel offers the breakdown toggle", !!findByText(tree, "内訳を見る"));
 check("collapsed panel does not render rows", !text(tree).includes("aux:"));
 check("collapsed panel hides the wrap warning when wrapped", !text(tree).includes("公式カードの重複解消は無効"));
-check("fetch URL is the plugin endpoint with the active profile",
-  calls.fetch[0] === "/api/plugins/models-usage-fold/model-usage?days=30&profile=default", calls.fetch[0]);
+check("fetch URL mirrors the page scoping (no profile param when the page sends none)",
+  calls.fetch[0] === "/api/plugins/models-usage-fold/model-usage?days=30", calls.fetch[0]);
 
 // ── expanded state ───────────────────────────────────────────────────────────
 const toggle = findByText(tree, "内訳を見る");
@@ -191,6 +193,15 @@ findByText(tree, "7d").props.onClick();
 tree = await render();
 check("switching to 7d refetches", calls.fetch.length > before && calls.fetch[calls.fetch.length - 1].includes("days=7"),
   calls.fetch[calls.fetch.length - 1]);
+
+// ── ?profile= on the URL wins (mirrors ProfileProvider) ─────────────────────
+loc.search = "?profile=roleplay";
+findByText(tree, "90d").props.onClick();
+tree = await render();
+check("?profile= from the URL is forwarded",
+  calls.fetch[calls.fetch.length - 1].includes("days=90") && calls.fetch[calls.fetch.length - 1].includes("profile=roleplay"),
+  calls.fetch[calls.fetch.length - 1]);
+loc.search = "";
 
 // ── wrap warning path ────────────────────────────────────────────────────────
 const broken = JSON.parse(JSON.stringify(FIXTURE));
