@@ -18,9 +18,70 @@
 
   var PLUGIN = "models-usage-fold";
   var SLOT = "models:top";
-  var VERSION = "v1.3";
+  var VERSION = "v1.4";
   var BASE = "/api/plugins/" + PLUGIN;
   var TOP_N = 15;
+
+  // ── period sync ──────────────────────────────────────────────────────────
+  // The panel follows the page's own 7d/30d/90d selector (no own buttons): the
+  // official fetch to /api/analytics/models carries the active window.
+  var syncedDays = null;
+  var daysListeners = [];
+
+  function notifyDays(n) {
+    var value = parseInt(n, 10);
+    if (!value || value === syncedDays) return;
+    syncedDays = value;
+    daysListeners.forEach(function (fn) {
+      try { fn(value); } catch (err) { /* ignore */ }
+    });
+  }
+
+  function registerDaysListener(fn) { daysListeners.push(fn); }
+  function unregisterDaysListener(fn) {
+    var i = daysListeners.indexOf(fn);
+    if (i >= 0) daysListeners.splice(i, 1);
+  }
+
+  function installFetchSniffer() {
+    try {
+      if (typeof window === "undefined" || window.__mufDaysSniffer || typeof window.fetch !== "function") return;
+      var orig = window.fetch;
+      window.fetch = function (input) {
+        try {
+          var url = typeof input === "string" ? input : (input && input.url) || "";
+          var m = /\/api\/analytics\/models\?(?:[^#]*&)?days=(\d+)/.exec(url);
+          if (m) notifyDays(m[1]);
+        } catch (err) { /* ignore */ }
+        return orig.apply(this, arguments);
+      };
+      window.__mufDaysSniffer = true;
+    } catch (err) { /* ignore */ }
+  }
+
+  // Fallback when no request was observed (the page may have fetched before this
+  // bundle ran): read the period buttons — the active one is the class-list odd one out.
+  function detectDaysFromButtons() {
+    try {
+      var buttons = [];
+      var all = document.querySelectorAll("button");
+      for (var i = 0; i < all.length; i += 1) {
+        var label = (all[i].textContent || "").trim();
+        if (/^\d+d$/.test(label)) buttons.push(all[i]);
+      }
+      if (buttons.length !== 3) return null;
+      var counts = {};
+      buttons.forEach(function (b) { var c = b.className || ""; counts[c] = (counts[c] || 0) + 1; });
+      var odd = buttons.filter(function (b) { return counts[b.className || ""] === 1; });
+      if (odd.length !== 1) return null;
+      var m = /^(\d+)d$/.exec((odd[0].textContent || "").trim());
+      return m ? parseInt(m[1], 10) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  installFetchSniffer();
 
   var CSS_ID = "models-usage-fold-css";
   if (!document.getElementById(CSS_ID)) {
@@ -43,6 +104,7 @@
       ".muf-num{font-family:ui-monospace,SFMono-Regular,monospace;text-align:right;white-space:nowrap}",
       ".muf-sub{font-size:11px;opacity:.6;margin-top:2px;font-family:ui-monospace,SFMono-Regular,monospace}",
       ".muf-note{font-size:11px;opacity:.6;margin-top:6px}",
+      ".muf-period{font-size:11px;opacity:.7;font-family:ui-monospace,SFMono-Regular,monospace}",
     ].join("");
     document.head.appendChild(style);
   }
@@ -225,6 +287,23 @@
     var view = dataState[0];
     var setView = dataState[1];
 
+    // Follow the page's period selector (sniffed from its own API call, with a
+    // button-reading fallback when the page fetched before this bundle loaded).
+    useEffect(function () {
+      var onDays = function (value) { setDays(value); };
+      registerDaysListener(onDays);
+      var timer = setTimeout(function () {
+        if (syncedDays == null) {
+          var detected = detectDaysFromButtons();
+          if (detected) setDays(detected);
+        }
+      }, 1500);
+      return function () {
+        unregisterDaysListener(onDays);
+        clearTimeout(timer);
+      };
+    }, []);
+
     useEffect(function () {
       var cancelled = false;
       setView(function (prev) { return { loading: true, data: prev.data, error: null }; });
@@ -282,14 +361,7 @@
         ? h("span", { className: "muf-warn" }, "公式カードの重複解消は無効（" + (data.wrap_detail || data.wrap_status || "unknown") + "）")
         : null,
       h("span", { className: "muf-right" },
-        [7, 30, 90].map(function (d) {
-          return h("button", {
-            key: d,
-            type: "button",
-            className: "muf-tab" + (d === days ? " on" : ""),
-            onClick: function () { setDays(d); },
-          }, d + "d");
-        }),
+        h("span", { className: "muf-period" }, "期間 " + days + "d · 上部の選択に追従"),
         h("button", {
           type: "button",
           className: "muf-tab" + (open ? " on" : ""),
@@ -326,11 +398,13 @@
     );
   }
 
-  // Placement is DOM surgery on the official page, so it gets its own seam and is
+  // Placement/period helpers are DOM-side, so they get their own seams and are
   // exercised directly (see tests/test_slot_panel.mjs).
   Panel.__mufPlacePanel = placePanel;
   Panel.__mufFindCard = findModelSettingsCard;
   Panel.__mufFindGrid = findCardsGrid;
+  Panel.__mufNotifyDays = notifyDays;
+  Panel.__mufDetectDays = detectDaysFromButtons;
 
   window.__HERMES_PLUGINS__.registerSlot(PLUGIN, SLOT, Panel);
 })();

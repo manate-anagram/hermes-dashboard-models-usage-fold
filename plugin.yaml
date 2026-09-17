@@ -1,5 +1,5 @@
 name: models-usage-fold
-version: 1.3.0
+version: 1.4.0
 description: "Fold duplicate provider×model rows on the Models page and show the per-auxiliary-task breakdown."
 author: manate
 kind: standalone

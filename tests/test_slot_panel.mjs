@@ -84,6 +84,12 @@ const SDK = {
 };
 
 const listeners = [];
+// The page's own (sniffed) fetch: the panel learns the active period from it.
+const sniffed = [];
+const pageFetch = async (url) => {
+  sniffed.push(String(url));
+  return { ok: true, json: async () => ({}) };
+};
 const loc = { reload: () => { calls.reload += 1; }, search: "" };
 globalThis.window = {
   __HERMES_PLUGIN_SDK__: SDK,
@@ -91,6 +97,7 @@ globalThis.window = {
     registerSlot: (plugin, slot, comp) => calls.slots.push({ plugin, slot, comp }),
     register: () => {},
   },
+  fetch: pageFetch,
   location: loc,
   addEventListener: (t, fn) => listeners.push([t, fn]),
   removeEventListener: () => {},
@@ -187,16 +194,21 @@ check("estimated provider is flagged", expanded.includes("(推定)") === false, 
 check("rows are ordered as delivered (largest first)",
   expanded.indexOf("muse-spark-1.2-contributor") < expanded.indexOf("glm-5.3-flash"));
 
-// ── day switch refetches ─────────────────────────────────────────────────────
-const before = calls.fetch.length;
-findByText(tree, "7d").props.onClick();
+// ── period follows the page's own selector ──────────────────────────────────
+check("panel renders no period buttons of its own", !findByText(tree, "7d") && !findByText(tree, "90d"));
+check("window.fetch was wrapped (sniffer installed)", typeof window.fetch === "function" && window.fetch !== pageFetch);
+const beforeDays = calls.fetch.length;
+await window.fetch("/api/analytics/models?days=7&profile=default"); // the official page's own call
 tree = await render();
-check("switching to 7d refetches", calls.fetch.length > before && calls.fetch[calls.fetch.length - 1].includes("days=7"),
+check("page's 7d request makes the panel refetch with 7d",
+  calls.fetch.length > beforeDays && calls.fetch[calls.fetch.length - 1].includes("days=7"),
   calls.fetch[calls.fetch.length - 1]);
+check("header shows the synced period", text(tree).includes("期間 7d"), text(tree).slice(0, 140));
+check("sniffer is transparent (the page's fetch still ran)", sniffed.includes("/api/analytics/models?days=7&profile=default"));
 
 // ── ?profile= on the URL wins (mirrors ProfileProvider) ─────────────────────
 loc.search = "?profile=roleplay";
-findByText(tree, "90d").props.onClick();
+Panel.__mufNotifyDays(90);
 tree = await render();
 check("?profile= from the URL is forwarded",
   calls.fetch[calls.fetch.length - 1].includes("days=90") && calls.fetch[calls.fetch.length - 1].includes("profile=roleplay"),
@@ -208,13 +220,13 @@ const broken = JSON.parse(JSON.stringify(FIXTURE));
 broken.wrap_status = "core-function-missing";
 broken.wrap_detail = "hermes_cli.web_routers.analytics._get_models_analytics not found";
 fetchImpl = async () => broken;
-findByText(tree, "30d").props.onClick();
+Panel.__mufNotifyDays(30);
 tree = await render();
 check("unwrapped core shows the warning", text(tree).includes("公式カードの重複解消は無効"), text(tree).slice(0, 200));
 
 // ── error path ───────────────────────────────────────────────────────────────
 fetchImpl = async () => { throw new Error("HTTP 500"); };
-findByText(tree, "90d").props.onClick();
+Panel.__mufNotifyDays(90);
 tree = await render();
 check("fetch failure surfaces in the panel", text(tree).includes("取得失敗: HTTP 500"), text(tree).slice(0, 200));
 
@@ -255,7 +267,7 @@ function makeEl(tag, className) {
     querySelectorAll(sel) {
       const out = [];
       const walk = (n) => n.childNodes.forEach((c) => {
-        const hit = sel === "*" || (sel === "span" && c.tagName === "span") || (sel === "div" && c.tagName === "div");
+        const hit = sel === "*" || c.tagName === sel;
         if (hit) out.push(c);
         walk(c);
       });
@@ -333,6 +345,20 @@ check("empty state places it right below the Model Settings card",
 container.appendChild(cardsGrid);
 check("cards coming back moves it above the grid again",
   Panel.__mufPlacePanel() === true && container.childNodes.indexOf(panelEl) === container.childNodes.indexOf(cardsGrid) - 1);
+
+// fallback: no sniffed request → read the page's period buttons (active = class odd one out)
+const btn7 = makeEl("button", "muf-tab");
+btn7.textContent = "7d";
+const btn30 = makeEl("button", "muf-tab");
+btn30.textContent = "30d";
+const btn90 = makeEl("button", "muf-tab on");
+btn90.textContent = "90d";
+const btnHost = makeEl("div", "flex");
+btnHost.appendChild(btn7);
+btnHost.appendChild(btn30);
+btnHost.appendChild(btn90);
+container.appendChild(btnHost);
+check("reads the active period from the page's own buttons", Panel.__mufDetectDays() === 90, String(Panel.__mufDetectDays()));
 
 cleanups.forEach((fn) => { try { fn(); } catch { /* ignore */ } });
 
