@@ -18,9 +18,23 @@
 
   var PLUGIN = "models-usage-fold";
   var SLOT = "models:top";
-  var VERSION = "v1.4";
+  var VERSION = "v1.5";
   var BASE = "/api/plugins/" + PLUGIN;
   var TOP_N = 15;
+
+  // Exactly the props the official "Configure" buttons use on the Model Settings card
+  // (size sm + outlined + this className) so the toggle looks native.
+  var CONFIGURE_CLASS = "shrink-0 self-start text-xs uppercase sm:self-center";
+
+  function breakdownButton(open, onClick) {
+    var props = { size: "sm", outlined: true, className: CONFIGURE_CLASS, onClick: onClick };
+    if (C.Button) return h(C.Button, props, "内訳");
+    return h("button", {
+      type: "button",
+      className: "muf-tab" + (open ? " on" : ""),
+      onClick: onClick,
+    }, "内訳");
+  }
 
   // ── period sync ──────────────────────────────────────────────────────────
   // The panel follows the page's own 7d/30d/90d selector (no own buttons): the
@@ -104,7 +118,6 @@
       ".muf-num{font-family:ui-monospace,SFMono-Regular,monospace;text-align:right;white-space:nowrap}",
       ".muf-sub{font-size:11px;opacity:.6;margin-top:2px;font-family:ui-monospace,SFMono-Regular,monospace}",
       ".muf-note{font-size:11px;opacity:.6;margin-top:6px}",
-      ".muf-period{font-size:11px;opacity:.7;font-family:ui-monospace,SFMono-Regular,monospace}",
     ].join("");
     document.head.appendChild(style);
   }
@@ -361,12 +374,7 @@
         ? h("span", { className: "muf-warn" }, "公式カードの重複解消は無効（" + (data.wrap_detail || data.wrap_status || "unknown") + "）")
         : null,
       h("span", { className: "muf-right" },
-        h("span", { className: "muf-period" }, "期間 " + days + "d · 上部の選択に追従"),
-        h("button", {
-          type: "button",
-          className: "muf-tab" + (open ? " on" : ""),
-          onClick: function () { setOpen(!open); },
-        }, open ? "内訳を隠す" : "内訳を見る")
+        breakdownButton(open, function () { setOpen(!open); })
       )
     );
 

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-17
+
+- 「期間 7d · 上部の選択に追従」のラベルを削除（追従は動作のまま、表示は不要）
+- 開閉ボタンを「内訳」に変更し、**Model Settings カードの Configure と同じデザイン**に
+  - SDK の `Button` を `size:"sm"` / `outlined` / `className:"shrink-0 self-start text-xs uppercase sm:self-center"`
+    で使う（公式 Configure と同一props）。SDK に Button が無い時はプレーンbuttonにフォールバック
+
 ## [1.4.0] - 2026-09-17
 
 - 期間（7d/30d/90d）を上部の期間指定に自動追従（パネル独自のボタンは廃止）

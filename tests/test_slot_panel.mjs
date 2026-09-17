@@ -77,7 +77,7 @@ const SDK = {
   sdkVersion: "1.1.0",
   React,
   hooks: {},
-  components: {},
+  components: { Button: "Button" },
   utils: { cn: (...a) => a.filter(Boolean).join(" ") },
   api: { getActiveProfile: async () => ({ active: "default", current: "default" }) },
   fetchJSON: (url) => { calls.fetch.push(url); return fetchImpl(url); },
@@ -165,7 +165,9 @@ function findByText(node, label) {
   if (!node || typeof node !== "object") return null;
   if (Array.isArray(node)) { for (const c of node) { const hit = findByText(c, label); if (hit) return hit; } return null; }
   if (node.__el) {
-    if (node.type === "button" && textOf(node).join(" ").includes(label)) return node;
+    const clickable = node.type === "button" || node.type === "Button"
+      || typeof (node.props && node.props.onClick) === "function";
+    if (clickable && textOf(node).join(" ").includes(label)) return node;
     return findByText(node.props && node.props.children, label);
   }
   return null;
@@ -175,14 +177,20 @@ function findByText(node, label) {
 let tree = await render();
 check("collapsed panel shows the version", /モデル使用量の集約 v\d+\.\d+/.test(text(tree)), text(tree).slice(0, 60));
 check("collapsed panel shows the fold summary (90枚 → 2件)", text(tree).includes("90枚 → 2件（重複 88）"), text(tree));
-check("collapsed panel offers the breakdown toggle", !!findByText(tree, "内訳を見る"));
+check("collapsed panel offers the breakdown toggle", !!findByText(tree, "内訳"));
+const toggleNode = findByText(tree, "内訳");
+check("toggle is the official SDK Button styled like Configure",
+  toggleNode.type === "Button" && toggleNode.props.size === "sm" && toggleNode.props.outlined === true
+  && String(toggleNode.props.className).includes("uppercase"),
+  JSON.stringify({ type: toggleNode.type, size: toggleNode.props.size, outlined: toggleNode.props.outlined }));
+check("no period text in the panel header", !text(tree).includes("期間") && !text(tree).includes("追従"), text(tree).slice(0, 90));
 check("collapsed panel does not render rows", !text(tree).includes("aux:"));
 check("collapsed panel hides the wrap warning when wrapped", !text(tree).includes("公式カードの重複解消は無効"));
 check("fetch URL mirrors the page scoping (no profile param when the page sends none)",
   calls.fetch[0] === "/api/plugins/models-usage-fold/model-usage?days=30", calls.fetch[0]);
 
 // ── expanded state ───────────────────────────────────────────────────────────
-const toggle = findByText(tree, "内訳を見る");
+const toggle = findByText(tree, "内訳");
 toggle.props.onClick();
 tree = await render();
 const expanded = text(tree);
@@ -203,7 +211,6 @@ tree = await render();
 check("page's 7d request makes the panel refetch with 7d",
   calls.fetch.length > beforeDays && calls.fetch[calls.fetch.length - 1].includes("days=7"),
   calls.fetch[calls.fetch.length - 1]);
-check("header shows the synced period", text(tree).includes("期間 7d"), text(tree).slice(0, 140));
 check("sniffer is transparent (the page's fetch still ran)", sniffed.includes("/api/analytics/models?days=7&profile=default"));
 
 // ── ?profile= on the URL wins (mirrors ProfileProvider) ─────────────────────
