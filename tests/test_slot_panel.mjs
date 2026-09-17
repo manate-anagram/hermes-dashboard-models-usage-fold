@@ -229,6 +229,7 @@ function makeEl(tag, className) {
     textContent: "",
     parentElement: null,
     isConnected: true,
+    style: {},
     get childElementCount() { return this.childNodes.length; },
     setAttribute() {},
     appendChild(child) {
@@ -294,6 +295,7 @@ container.appendChild(cardsGrid);
 
 const slotHost = makeEl("div", "muf-slot-host");
 const panelEl = makeEl("div", "muf-wrap");
+panelEl.style.visibility = "hidden"; // rootProps hides it until it is placed
 slotHost.appendChild(panelEl);
 
 globalThis.document.querySelectorAll = (sel) => (sel === "[data-muf-panel]" ? [panelEl] : container.querySelectorAll(sel));
@@ -308,6 +310,7 @@ check("panel sits directly under Model Settings / above the cards",
   container.childNodes.indexOf(panelEl) === container.childNodes.indexOf(cardsGrid) - 1,
   "index " + container.childNodes.indexOf(panelEl) + " of cards " + container.childNodes.indexOf(cardsGrid));
 check("panel is no longer inside the slot host", slotHost.childNodes.indexOf(panelEl) === -1);
+check("panel is revealed once it is placed", panelEl.style.visibility === "visible", panelEl.style.visibility);
 check("placing twice is a no-op", Panel.__mufPlacePanel() === true && calls.inserts.length === 1,
   "inserts=" + JSON.stringify(calls.inserts));
 

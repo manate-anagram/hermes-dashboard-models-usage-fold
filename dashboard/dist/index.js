@@ -18,7 +18,7 @@
 
   var PLUGIN = "models-usage-fold";
   var SLOT = "models:top";
-  var VERSION = "v1.1";
+  var VERSION = "v1.2";
   var BASE = "/api/plugins/" + PLUGIN;
   var TOP_N = 15;
 
@@ -54,7 +54,6 @@
   var PANEL_ATTR = "data-muf-panel";
   var panelNode = null;
   var panelHost = null;
-  var placeTimer = null;
 
   function captureNode(el) {
     panelNode = el;
@@ -62,7 +61,20 @@
   }
 
   function rootProps() {
-    return { className: "muf-wrap", "data-muf-panel": "1", ref: captureNode };
+    // Hidden until placed so it never flashes at the slot position (top of the page).
+    return {
+      className: "muf-wrap",
+      "data-muf-panel": "1",
+      style: { visibility: "hidden" },
+      ref: captureNode,
+    };
+  }
+
+  function revealPanel(node) {
+    try {
+      var el = node || panelNode;
+      if (el && el.style) el.style.visibility = "visible";
+    } catch (err) { /* ignore */ }
   }
 
   function findModelSettingsCard() {
@@ -120,20 +132,16 @@
         if (grid && grid.parentElement) before = grid;
       }
       if (!before || !before.parentElement) return false;
-      if (before === node || before.previousSibling === node) return true;
+      if (before === node || before.previousSibling === node) {
+        revealPanel(node);
+        return true;
+      }
       before.parentElement.insertBefore(node, before);
+      revealPanel(node);
       return true;
     } catch (err) {
       return false;
     }
-  }
-
-  function schedulePlacement() {
-    if (placeTimer) return;
-    placeTimer = setTimeout(function () {
-      placeTimer = null;
-      placePanel();
-    }, 200);
   }
 
   function useHook(name) {
@@ -219,6 +227,8 @@
         .then(function (payload) {
           if (cancelled) return;
           setView({ loading: false, data: payload, error: payload && payload.error ? payload.error : null });
+          // Re-park after the page re-rendered with fresh data.
+          setTimeout(function () { if (!cancelled) placePanel(); }, 60);
         })
         .catch(function (err) {
           if (cancelled) return;
@@ -227,24 +237,20 @@
       return function () { cancelled = true; };
     }, [days]);
 
-    // Park the panel under the "Model Settings" card (above the model cards) and
-    // keep it there while the page re-renders.
+    // Park the panel under the "Model Settings" card (above the model cards).
+    // Deliberately NOT a continuous MutationObserver: the official page is React-managed,
+    // and re-placing on every DOM mutation fought the reconciler (the panel flickered
+    // between the slot, the "Models per bot" card and its target). A few settle timers
+    // plus a re-place after each fetch are enough and stay out of React's way.
     useEffect(function () {
       var alive = true;
-      var timers = [0, 300, 900, 2000, 4000].map(function (ms) {
+      var timers = [0, 300, 900, 2000, 3500].map(function (ms) {
         return setTimeout(function () { if (alive) placePanel(); }, ms);
       });
-      var observer = null;
-      try {
-        if (typeof MutationObserver === "function") {
-          observer = new MutationObserver(function () { if (alive) schedulePlacement(); });
-          observer.observe(document.body, { childList: true, subtree: true });
-        }
-      } catch (err) { /* no observer → the timers above still place it */ }
+      timers.push(setTimeout(function () { if (alive) revealPanel(); }, 1500));
       return function () {
         alive = false;
         timers.forEach(function (t) { clearTimeout(t); });
-        if (observer) observer.disconnect();
       };
     }, []);
 
