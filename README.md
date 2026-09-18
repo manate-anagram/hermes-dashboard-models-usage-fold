@@ -51,6 +51,10 @@ dashboard/dist/index.js   … Models ページの "models:top" に集約ビュ�
 ## インストール
 
 ```bash
+# 0) 配置（プラグインディレクトリへ clone。標準パスなら ~/.hermes/plugins/）
+git clone git@github.com:manate-anagram/hermes-dashboard-models-usage-fold.git \
+  /opt/data/plugins/models-usage-fold
+
 # 1) 有効化（config.yaml の plugins.enabled に載る）
 hermes plugins enable models-usage-fold
 
